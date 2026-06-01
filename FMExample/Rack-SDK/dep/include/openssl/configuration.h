@@ -27,9 +27,6 @@ extern "C" {
  * OpenSSL was configured with the following options:
  */
 
-# ifndef OPENSSL_SYS_MINGW64
-#  define OPENSSL_SYS_MINGW64 1
-# endif
 # define OPENSSL_CONFIGURED_API 30300
 # ifndef OPENSSL_RAND_SEED_OS
 #  define OPENSSL_RAND_SEED_OS
@@ -39,9 +36,6 @@ extern "C" {
 # endif
 # ifndef OPENSSL_NO_ACVP_TESTS
 #  define OPENSSL_NO_ACVP_TESTS
-# endif
-# ifndef OPENSSL_NO_AFALGENG
-#  define OPENSSL_NO_AFALGENG
 # endif
 # ifndef OPENSSL_NO_APPS
 #  define OPENSSL_NO_APPS
@@ -136,6 +130,9 @@ extern "C" {
 # ifndef OPENSSL_NO_WEAK_SSL_CIPHERS
 #  define OPENSSL_NO_WEAK_SSL_CIPHERS
 # endif
+# ifndef OPENSSL_NO_WINSTORE
+#  define OPENSSL_NO_WINSTORE
+# endif
 # ifndef OPENSSL_NO_ZLIB
 #  define OPENSSL_NO_ZLIB
 # endif
@@ -162,8 +159,8 @@ extern "C" {
 # if !defined(OPENSSL_SYS_UEFI)
 #  undef BN_LLONG
 /* Only one for the following should be defined */
-#  undef SIXTY_FOUR_BIT_LONG
-#  define SIXTY_FOUR_BIT
+#  define SIXTY_FOUR_BIT_LONG
+#  undef SIXTY_FOUR_BIT
 #  undef THIRTY_TWO_BIT
 # endif
 

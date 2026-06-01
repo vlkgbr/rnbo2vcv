@@ -1,6 +1,6 @@
 import math
 import re
-from typing import List, Tuple, Dict, Any, Optional
+from typing import List, Tuple, Dict, Optional
 from pathlib import Path
 
 from rnbo2vcv.models import ComponentPos, PatchInfo, RnboParam, CustomWidgets, _UI_PREFIXES
@@ -301,7 +301,7 @@ def _smart_layout(info: PatchInfo, dac_labels: dict) -> Tuple[int, List[Componen
         tag = adc_obj.get("meta") or adc_obj.get("comment") or adc_obj.get("tag") or f"in{adc_n}"
         
         ptype = ""
-        lbl_base = tag
+
         if tag.lower().startswith("in") and tag[2:].isdigit():
             if stereo_in and adc_n in (1, 2):
                 lbl = "IN_L" if adc_n == 1 else "IN_R"

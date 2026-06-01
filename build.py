@@ -38,7 +38,7 @@ def auto_detect_rnbo_dir(default_dir):
             return d.name
     return default_dir
 
-def _interactive_layout(base_cmd, cache_path, script_dir, env, prompt_positions=True, prompt_ports=True):
+def _interactive_layout(base_cmd, cache_path, env, prompt_positions=True, prompt_ports=True):
     _VALID_PORT_TYPES = {"cvi", "cvo", "audioi", "audioo", "inl", "inr", "outl", "outr"}
     dump_cmd = base_cmd + ["--dump-layout"]
     print("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
@@ -242,8 +242,11 @@ def main():
         version = version or VERSION
         license_str = license_str or LICENSE
 
+    if not rnbo_dir:
+        rnbo_dir = auto_detect_rnbo_dir("export")
+
     SCRIPT_DIR = Path(__file__).parent.resolve()
-    RNBO_DIR = Path(rnbo_dir).resolve() if rnbo_dir else (SCRIPT_DIR / "export")
+    RNBO_DIR = Path(rnbo_dir).resolve()
     OUT_DIR = SCRIPT_DIR / "rack_plugin"
     RNBO_SRC = "rnbo_source"
 
@@ -300,9 +303,9 @@ def main():
         if layout_cache_path.exists() and not args.non_interactive:
             reuse = prompt_with_default("\n  Found saved layout. Use saved layout/types?", "yes")
             if reuse.lower() not in ("yes", "y"):
-                _interactive_layout(generator_cmd, layout_cache_path, SCRIPT_DIR, env, prompt_positions=use_custom_layout, prompt_ports=use_custom_ports)
+                _interactive_layout(generator_cmd, layout_cache_path, env, prompt_positions=use_custom_layout, prompt_ports=use_custom_ports)
         elif not layout_cache_path.exists() and not args.non_interactive:
-            _interactive_layout(generator_cmd, layout_cache_path, SCRIPT_DIR, env, prompt_positions=use_custom_layout, prompt_ports=use_custom_ports)
+            _interactive_layout(generator_cmd, layout_cache_path, env, prompt_positions=use_custom_layout, prompt_ports=use_custom_ports)
         
         if layout_cache_path.exists():
             generator_cmd.extend(["--layout-file", str(layout_cache_path)])

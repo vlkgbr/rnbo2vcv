@@ -1,0 +1,18 @@
+{
+  "version": 2,
+  "panel_hp": 12,
+  "positions": {
+    "CARFREQ_IN": {
+      "port_type": "cvi"
+    },
+    "MODFREQ_IN": {
+      "port_type": "cvi"
+    },
+    "MODDEPTH_IN": {
+      "port_type": "cvi"
+    },
+    "OUT": {
+      "port_type": "audioo"
+    }
+  }
+}

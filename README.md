@@ -370,4 +370,4 @@ Because I am not a native C++ developer, the codebase might have structural quir
 
 - **RNBO and Max/MSP** by [Cycling '74](https://cycling74.com/)
 - **VCV Rack SDK** © VCV LLC
-- **rnbo2vcv.py** built upon the foundations of [pd2vcv]
+- **rnbo2vcv.py** built upon the foundations of [pd2vcv](https://gitlab.com/vlkgbr/pd2vcv)

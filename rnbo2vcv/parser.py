@@ -40,9 +40,7 @@ def parse_smart_name(param: RnboParam) -> None:
 
     # Check for _outN suffix
     out_match = _OUT_SUFFIX_RE.search(remainder)
-    dac_num = 0
     if out_match:
-        dac_num = int(out_match.group(1))
         remainder = remainder[:out_match.start()]
 
     core = remainder
@@ -53,11 +51,10 @@ def parse_smart_name(param: RnboParam) -> None:
     param.ui_type   = matched_prefix
     param.core_name = core
     param.adc_map   = adc_num
-    param.dac_map   = dac_num
     param.enum_label = sanitize_identifier(core).upper()
     
-    print(f"[smart] '{param.name}' -> ui={matched_prefix:8s}  core={core:12s}"
-          f"  adc_map={adc_num} dac_map={dac_num} enum={param.enum_label}")
+    print(f"[smart] {param.name} -> {param.ui_type} '{param.core_name}'\n"
+          f"  adc_map={adc_num} enum={param.enum_label}")
 
 
 def apply_smart_names(params: List[RnboParam]) -> bool:
@@ -92,7 +89,6 @@ def parse_from_json(json_path: Path) -> Tuple[List[RnboParam], int, int]:
         params.append(RnboParam(
             name=p["name"],
             safe_name=sanitize_identifier(p["name"]),
-            param_id=p["paramId"],
             index=p["index"],
             minimum=float(p.get("minimum", 0.0)),
             maximum=float(p.get("maximum", 1.0)),

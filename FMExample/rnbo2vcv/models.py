@@ -7,7 +7,7 @@ from pathlib import Path
 class RnboParam:
     name: str           # raw name from RNBO json (e.g., "base_carfreq_in1")
     safe_name: str      # sanitized C++ identifier
-    param_id: str       # RNBO paramId string
+
     index: int          # RNBO parameter index for setParameterValue
     minimum: float = 0.0
     maximum: float = 1.0
@@ -16,7 +16,7 @@ class RnboParam:
     ui_type: str = ""       # "base" | "attenv" | "atten" | "" (plain)
     core_name: str = ""     # shared grouping name, e.g. "cutoff"
     adc_map: int = 0        # >0 means this param's column owns that adc~ input
-    dac_map: int = 0        # >0 means this [s] object labels that dac~ output in its column
+
     enum_label: str = ""    # overridden C++ enum label (stripped of prefix/suffix)
 
 
