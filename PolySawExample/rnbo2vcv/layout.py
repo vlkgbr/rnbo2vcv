@@ -149,8 +149,9 @@ def _smart_layout(info: PatchInfo, dac_labels: dict) -> Tuple[int, List[Componen
                 break
         if matched_core:
             idx = inl.get("index")
-            mapped_adcs.add(idx)
-            adc_to_core[matched_core] = idx
+            if idx is not None:
+                mapped_adcs.add(idx)
+                adc_to_core[matched_core] = idx
 
     dac_to_core = {}
     for outl in info.outlets:
@@ -163,8 +164,9 @@ def _smart_layout(info: PatchInfo, dac_labels: dict) -> Tuple[int, List[Componen
                 break
         if matched_core:
             idx = outl.get("index")
-            mapped_dacs.add(idx)
-            dac_to_core[matched_core] = idx
+            if idx is not None:
+                mapped_dacs.add(idx)
+                dac_to_core[matched_core] = idx
 
     all_adcs    = set(range(1, n_ai + 1))
     all_dacs    = set(range(1, n_ao + 1))
@@ -327,7 +329,8 @@ def _smart_layout(info: PatchInfo, dac_labels: dict) -> Tuple[int, List[Componen
                     lbl = "IN_L" if adc_n == 1 else "IN_R"
                     ui_lbl = "IN L" if adc_n == 1 else "IN R"
                 else:
-                    lbl, ui_lbl = "IN", "IN"
+                    lbl = f"IN_{adc_n}"
+                    ui_lbl = "IN" if len(unmapped_in) == 1 else f"IN {adc_n}"
                     
         lbl = dedup_label(lbl)
         components.append(ComponentPos(
@@ -371,7 +374,8 @@ def _smart_layout(info: PatchInfo, dac_labels: dict) -> Tuple[int, List[Componen
                     lbl = "OUT_L" if dac_n == 1 else "OUT_R"
                     ui_lbl = "OUT L" if dac_n == 1 else "OUT R"
                 else:
-                    lbl, ui_lbl = "OUT", "OUT"
+                    lbl = f"OUT_{dac_n}"
+                    ui_lbl = "OUT" if len(unmapped_out) == 1 else f"OUT {dac_n}"
 
 
         lbl = dedup_label(lbl)

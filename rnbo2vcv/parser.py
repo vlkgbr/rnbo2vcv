@@ -81,7 +81,7 @@ def find_rnbo_json(rnbo_dir: Path) -> Optional[Path]:
             pass
     return None
 
-def parse_from_json(json_path: Path) -> Tuple[List[RnboParam], int, int]:
+def parse_from_json(json_path: Path) -> Tuple[List[RnboParam], int, int, list, list]:
     data = json.loads(json_path.read_text(encoding="utf-8"))
     params: List[RnboParam] = []
     
