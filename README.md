@@ -9,7 +9,7 @@
 > - **Max 8 / Max 9** (with RNBO)
 > - **VCV Rack:** v2.6.6 (SDK)
 
-`build.py` reads your exported RNBO C++ source code, parses your parameter declarations, generates C++ wrapper code, builds `plugin.so`, and installs it into VCV Rack automatically.
+`build.py` reads your exported RNBO C++ source code, parses your parameter declarations, generates C++ wrapper code, builds `plugin.so` (or `.dll`/`.dylib`), and installs it into VCV Rack automatically.
 
 ---
 
