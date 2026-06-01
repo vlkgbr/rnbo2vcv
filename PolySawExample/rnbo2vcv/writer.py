@@ -41,8 +41,8 @@ def main() -> None:
                     help="Enable VCV Rack polyphony loop (yes/no)")
     ap.add_argument("--ui-text",     choices=["yes", "no"], default="yes",
                     help="Generate UI text labels in C++ (default: yes)")
-    ap.add_argument("--dump-layout", action="store_true",
-                    help="Print auto-layout as JSON to stdout and exit without writing files.")
+    ap.add_argument("--dump-layout-file", default=None,
+                    help="Path to save auto-layout JSON. If provided, writes layout to this file and exits.")
     ap.add_argument("--layout-file", default=None,
                     help="Path to a .rnbo2vcv_layout.json file with saved position overrides.")
     ap.add_argument("--res-dir",     default="res",
@@ -103,7 +103,7 @@ def main() -> None:
         info.stereo_out = True
         print("[layout] Stereo output detected from jack type overrides")
 
-    if args.dump_layout:
+    if args.dump_layout_file:
         layout_dump = {
             "version": 2,
             "panel_hp": panel_hp,
@@ -121,7 +121,9 @@ def main() -> None:
                 for c in components
             ],
         }
-        print(json.dumps(layout_dump, indent=2))
+        dump_path = Path(args.dump_layout_file).resolve()
+        dump_path.write_text(json.dumps(layout_dump, indent=2) + "\n", encoding="utf-8")
+        print(f"[layout] Dumped layout to {dump_path}")
         return
 
     if custom_widgets and custom_widgets.panel and res_dir:

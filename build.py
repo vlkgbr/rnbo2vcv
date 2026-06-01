@@ -9,6 +9,7 @@ import shutil
 import platform
 import argparse
 import subprocess
+import re
 from pathlib import Path
 
 # ── Config block ──────────────────────────────────────────────────────────────
@@ -40,22 +41,21 @@ def auto_detect_rnbo_dir(default_dir):
 
 def _interactive_layout(base_cmd, cache_path, env, prompt_positions=True, prompt_ports=True):
     _VALID_PORT_TYPES = {"cvi", "cvo", "audioi", "audioo", "inl", "inr", "outl", "outr"}
-    dump_cmd = base_cmd + ["--dump-layout"]
+    dump_file = Path(".rnbo2vcv_dump.json").resolve()
+    dump_cmd = base_cmd + ["--dump-layout-file", str(dump_file)]
     print("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     print("  Generating auto-layout for interactive placement...")
-    try: result = subprocess.run(dump_cmd, capture_output=True, text=True, encoding="utf-8", check=True, env=env)
-    except subprocess.CalledProcessError as e: sys.exit(f"  ERROR: Layout dump failed: {e.stderr}")
+    try: subprocess.run(dump_cmd, check=True, env=env)
+    except subprocess.CalledProcessError as e: sys.exit(f"  ERROR: Layout dump failed: {e}")
 
-    json_str = ""
-    for line in result.stdout.split("\n"):
-        line = line.strip()
-        if line.startswith("{"):
-            json_start = result.stdout.index(line)
-            json_str = result.stdout[json_start:]
-            break
+    if not dump_file.exists(): sys.exit("  ERROR: Could not find layout JSON dump file.")
 
-    if not json_str: sys.exit("  ERROR: Could not find layout JSON in generator output.")
-    layout_data = json.loads(json_str)
+    try:
+        layout_data = json.loads(dump_file.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        sys.exit(f"  ERROR: Invalid layout JSON: {e}")
+    finally:
+        if dump_file.exists(): dump_file.unlink()
     components = layout_data.get("components", [])
     panel_hp = layout_data.get("panel_hp", 10)
     controls = [c for c in components if c["kind"] == "param"]
@@ -149,7 +149,10 @@ def _interactive_layout(base_cmd, cache_path, env, prompt_positions=True, prompt
                     except ValueError:
                         print(f"    ⚠ Invalid input '{val}'. Try again or press Enter to skip.")
                 else:
-                    print(f"    ⚠ Invalid type '{val}'. Try again or press Enter to skip.")
+                    if prompt_ports and not prompt_positions:
+                        print(f"    ⚠ Invalid type '{val}'. Try again or press Enter to skip.")
+                    else:
+                        print(f"    ⚠ Invalid input '{val}'. Try again or press Enter to skip.")
 
     cache_data = {"version": 2, "panel_hp": panel_hp, "positions": overrides}
     cache_path.write_text(json.dumps(cache_data, indent=2) + "\n", encoding="utf-8")
@@ -212,7 +215,13 @@ def main():
             print("\n  [BLOCK_SIZE]: DSP processing block size.")
             print("  - 64 is the recommended default for stable CPU.")
             print("  - 1 provides minimal latency (1 sample), great for feedback loops, but uses much more CPU.")
-            args.block_size = int(prompt_with_default("  Block Size", str(BLOCK_SIZE)))
+            while True:
+                val = prompt_with_default("  Block Size", str(BLOCK_SIZE))
+                try:
+                    args.block_size = int(val)
+                    break
+                except ValueError:
+                    print(f"    ⚠ Block size must be an integer. Got '{val}'. Try again.")
         if args.ui_text == UI_TEXT:
             print("\n  [UI_TEXT]: Generate C++ text labels for your panel? (yes / no)")
             print("  - 'yes' automatically draws the module name and port labels in C++.")
@@ -240,7 +249,20 @@ def main():
         manufacturer = manufacturer or MANUFACTURER
         author = author or AUTHOR
         version = version or VERSION
+        version = version or VERSION
         license_str = license_str or LICENSE
+
+    module_name = module_name.strip()
+    if not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]{0,63}', module_name):
+        sys.exit(f"ERROR: Module name '{module_name}' must be a valid C++ identifier.")
+        
+    plugin_slug = plugin_slug.strip()
+    if not re.fullmatch(r'[A-Za-z0-9_\-]{1,64}', plugin_slug):
+        sys.exit(f"ERROR: Plugin slug '{plugin_slug}' must be alphanumeric/underscore/hyphen, max 64 chars.")
+        
+    version = version.strip()
+    if not version.startswith("2."):
+        sys.exit(f"ERROR: Version '{version}' must start with '2.' for VCV Rack 2.")
 
     if not rnbo_dir:
         rnbo_dir = auto_detect_rnbo_dir("export")
@@ -248,6 +270,8 @@ def main():
     SCRIPT_DIR = Path(__file__).parent.resolve()
     RNBO_DIR = Path(rnbo_dir).resolve()
     OUT_DIR = SCRIPT_DIR / "rack_plugin"
+    
+    # This path must match the C++ source directory expected by the generated Makefile template in rnbo2vcv/writer.py
     RNBO_SRC = "rnbo_source"
 
     RACK_DIR = SCRIPT_DIR / "Rack-SDK"
@@ -257,15 +281,15 @@ def main():
     machine = platform.machine().lower()
 
     if system == "Linux": rack_platform = "lin-arm64" if "aarch64" in machine or "arm" in machine else "lin-x64"; install_base = Path.home() / ".local" / "share" / "Rack2" / f"plugins-{rack_platform}"
-    elif system == "Darwin": rack_platform = "mac-arm64" if "arm64" in machine else "mac-x64"; install_base = Path.home() / "Documents" / "Rack2" / f"plugins-{rack_platform}"
-    elif system == "Windows" or "MINGW" in system or "MSYS" in system: rack_platform = "win-x64"; install_base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "Rack2" / f"plugins-{rack_platform}"
+    elif system == "Darwin": rack_platform = "mac-arm64" if "arm64" in machine else "mac-x64"; install_base = Path.home() / "Library" / "Application Support" / "Rack2" / f"plugins-{rack_platform}"
+    elif system == "Windows" or os.environ.get("MSYSTEM", "").startswith("MINGW"): rack_platform = "win-x64"; install_base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "Rack2" / f"plugins-{rack_platform}"
     else: rack_platform = "lin-x64"; install_base = Path.home() / ".local" / "share" / "Rack2" / f"plugins-{rack_platform}"
 
     install_dir = install_base / plugin_slug
     
-    if not plugin_slug or plugin_slug.strip() == "" or ".." in plugin_slug: sys.exit("ERROR: Invalid plugin slug")
     if install_dir.resolve() == install_base.resolve() or install_dir.resolve() == install_base.parent.resolve(): sys.exit("ERROR: Install dir resolved to base directory")
     if OUT_DIR.resolve() == SCRIPT_DIR.resolve() or OUT_DIR.resolve() == Path("/").resolve(): sys.exit("ERROR: OUT_DIR resolved dangerously")
+    if not str(OUT_DIR.resolve()).startswith(str(SCRIPT_DIR.resolve())): sys.exit("ERROR: OUT_DIR is outside project directory")
 
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     print("  rnbo2vcv  —  generating plugin files")
@@ -291,21 +315,37 @@ def main():
         "--license", license_str,
         "--ui-text", args.ui_text,
         "--polyphony", args.polyphony,
-        "--block-size", str(args.block_size),
-        "--res-dir", str(SCRIPT_DIR / "res")
+        "--block-size", str(args.block_size)
     ]
+    
+    res_dir = SCRIPT_DIR / "res"
+    if res_dir.is_dir():
+        generator_cmd.extend(["--res-dir", str(res_dir)])
 
     layout_cache_path = SCRIPT_DIR / ".rnbo2vcv_layout.json"
     use_custom_layout = args.custom_layout.lower() in ("yes", "y")
     use_custom_ports  = args.custom_ports.lower() in ("yes", "y")
 
     if use_custom_layout or use_custom_ports:
-        if layout_cache_path.exists() and not args.non_interactive:
+        cache_valid = False
+        if layout_cache_path.exists():
+            try:
+                cached = json.loads(layout_cache_path.read_text(encoding="utf-8"))
+                if cached.get("version", 1) >= 2:
+                    cache_valid = True
+                else:
+                    print("  ⚠ Layout cache is outdated (v1). It will be regenerated.")
+            except (json.JSONDecodeError, OSError):
+                print("  ⚠ Layout cache is corrupted. It will be regenerated.")
+
+        if cache_valid and not args.non_interactive:
             reuse = prompt_with_default("\n  Found saved layout. Use saved layout/types?", "yes")
             if reuse.lower() not in ("yes", "y"):
                 _interactive_layout(generator_cmd, layout_cache_path, env, prompt_positions=use_custom_layout, prompt_ports=use_custom_ports)
-        elif not layout_cache_path.exists() and not args.non_interactive:
+        elif not cache_valid and not args.non_interactive:
             _interactive_layout(generator_cmd, layout_cache_path, env, prompt_positions=use_custom_layout, prompt_ports=use_custom_ports)
+        elif not cache_valid and args.non_interactive:
+            sys.exit("ERROR: Stale or invalid layout cache in non-interactive mode. Aborting.")
         
         if layout_cache_path.exists():
             generator_cmd.extend(["--layout-file", str(layout_cache_path)])
@@ -318,6 +358,7 @@ def main():
     if not RNBO_DIR.exists(): sys.exit(f"ERROR: {RNBO_DIR} does not exist.")
 
     for item in RNBO_DIR.iterdir():
+        if item.is_symlink(): continue
         if item.name == "rnbo" and item.is_dir():
             shutil.copytree(item, rnbo_dest / "rnbo", dirs_exist_ok=True)
         elif item.suffix == ".cpp" or item.suffix == ".h":
@@ -326,7 +367,8 @@ def main():
     print("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     print(f"  make  (RACK_DIR={RACK_DIR})")
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-    subprocess.run(["make", "-C", str(OUT_DIR)], check=True)
+    if not RACK_DIR.is_dir(): sys.exit(f"ERROR: Rack-SDK not found at '{RACK_DIR}'")
+    subprocess.run(["make", "-C", str(OUT_DIR), f"RACK_DIR={RACK_DIR}"], check=True)
 
     print("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     print(f"  Installing → {install_dir}")
@@ -341,9 +383,18 @@ def main():
             
     json_src = OUT_DIR / "plugin.json"
     if json_src.exists(): shutil.copy2(json_src, install_dir)
+    
+    installed_bins = [pf for pf in ["plugin.so", "plugin.dylib", "plugin.dll"] if (install_dir / pf).exists()]
+    if not installed_bins: sys.exit("ERROR: No plugin binary found after build.")
+    if not (install_dir / "plugin.json").exists(): sys.exit("ERROR: plugin.json missing after build.")
 
-    for res_file in (OUT_DIR / "res").glob("*.svg"):
+    source_svgs = list((OUT_DIR / "res").glob("*.svg"))
+    for res_file in source_svgs:
         shutil.copy2(res_file, install_dir / "res")
+
+    installed_svgs = list((install_dir / "res").glob("*.svg"))
+    if len(installed_svgs) != len(source_svgs):
+        print(f"  ⚠ WARNING: SVG count mismatch. Source: {len(source_svgs)}, Installed: {len(installed_svgs)}")
 
     print("\n  ✓ Done. Restart VCV Rack 2 to load plugin.\n")
 
