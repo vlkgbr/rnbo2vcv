@@ -96,6 +96,10 @@ def _addchild_lines(components: List[ComponentPos], mn: str, panel_hp: int, ui_t
             elif c.kind == "param": label_y = c.y + (11.0 if kt == _UI_PREFIXES["base"] else 3.0) + 2.0
             else: label_y = c.y + 4.5 + 2.2
             ui_lbl = c.ui_label or c.label.replace("_", " ")
+            if ui_lbl.startswith("ATTENV "): ui_lbl = ui_lbl[7:]
+            elif ui_lbl.startswith("ATTEN "): ui_lbl = ui_lbl[6:]
+            elif ui_lbl.endswith(" ATTENV"): ui_lbl = ui_lbl[:-7]
+            elif ui_lbl.endswith(" ATTEN"): ui_lbl = ui_lbl[:-6]
             font_sz = "2.4f" if c.kind == "param" else "2.0f"
             pos_lbl = f"rack::mm2px(rack::Vec({c.x:.2f}f, {label_y:.2f}f))"
             lines.append(f'        addChild(new TextLabel({pos_lbl}, "{ui_lbl}", {font_sz}));')
@@ -184,10 +188,7 @@ def gen_module_cpp(info: PatchInfo, panel_hp: int,
         in_fill += "        for (int v = 0; v < activeVoices; v++) {\n"
         in_fill_lines = []
         for i, c in enumerate(audio_in_comps[:n_ai]):
-            if info.stereo_in and i == 1:
-                in_fill_lines.append(f"            _inBuf[{i}][v][_blkPos] = (RNBO::SampleValue)rack::math::clamp(inputs[{c.label}_ID].getNormalPolyVoltage(inputs[{audio_in_comps[0].label}_ID].getPolyVoltage(v), v), -12.0f, 12.0f);")
-            else:
-                in_fill_lines.append(f"            _inBuf[{i}][v][_blkPos] = (RNBO::SampleValue)rack::math::clamp(inputs[{c.label}_ID].getPolyVoltage(v), -12.0f, 12.0f);")
+            in_fill_lines.append(f"            _inBuf[{i}][v][_blkPos] = (RNBO::SampleValue)rack::math::clamp(inputs[{c.label}_ID].getPolyVoltage(v), -12.0f, 12.0f);")
         in_fill += "\n".join(in_fill_lines)
         in_fill += "\n        }"
 
@@ -196,17 +197,36 @@ def gen_module_cpp(info: PatchInfo, panel_hp: int,
         out_read += "\n".join(f"            outputs[{c.label}_ID].setVoltage(rack::math::clamp((float)_outBuf[{i}][v][_blkPos], -12.0f, 12.0f), v);" for i, c in enumerate(output_comps[:n_ao]))
         out_read += "\n        }"
 
-        param_sends = "\n".join(
-            f"                float val_{i} = rack::math::clamp(params[{_param_label(p)}_ID].getValue(), {p.minimum}f, {p.maximum}f);\n"
-            f"                if (val_{i} != _prevParam[{i}]) {{\n"
-            f"                    _prevParam[{i}] = val_{i};\n"
-            f"                    for (int v = 0; v < activeVoices; v++) _rnbo[v].setParameterValue(PARAM_{_param_label(p)}, val_{i});\n"
-            f"                }}\n"
-            f"                else if (activeVoices > _prevActiveVoices) {{\n"
-            f"                    for (int v = _prevActiveVoices; v < activeVoices; v++) _rnbo[v].setParameterValue(PARAM_{_param_label(p)}, val_{i});\n"
-            f"                }}"
-            for i, p in enumerate(in_p)
-        )
+        param_sends_lines = []
+        for i, p in enumerate(in_p):
+            lbl = _param_label(p)
+            is_trigger = getattr(p, "ui_type", "") == "trigger"
+            if is_trigger:
+                param_sends_lines.append(
+                    f"                float val_{i} = rack::math::clamp(params[{lbl}_ID].getValue(), {p.minimum}f, {p.maximum}f);\n"
+                    f"                if (val_{i} > 0.0f && _prevParam[{i}] == 0.0f) {{\n"
+                    f"                    _prevParam[{i}] = val_{i};\n"
+                    f"                    for (int v = 0; v < activeVoices; v++) _rnbo[v].setParameterValue(PARAM_{lbl}, val_{i});\n"
+                    f"                }}\n"
+                    f"                else if (std::fabs(val_{i} - _prevParam[{i}]) > 1e-6f) {{\n"
+                    f"                    _prevParam[{i}] = val_{i};\n"
+                    f"                }}\n"
+                    f"                else if (activeVoices > _prevActiveVoices) {{\n"
+                    f"                    for (int v = _prevActiveVoices; v < activeVoices; v++) _rnbo[v].setParameterValue(PARAM_{lbl}, val_{i});\n"
+                    f"                }}"
+                )
+            else:
+                param_sends_lines.append(
+                    f"                float val_{i} = rack::math::clamp(params[{lbl}_ID].getValue(), {p.minimum}f, {p.maximum}f);\n"
+                    f"                if (std::fabs(val_{i} - _prevParam[{i}]) > 1e-6f) {{\n"
+                    f"                    _prevParam[{i}] = val_{i};\n"
+                    f"                    for (int v = 0; v < activeVoices; v++) _rnbo[v].setParameterValue(PARAM_{lbl}, val_{i});\n"
+                    f"                }}\n"
+                    f"                else if (activeVoices > _prevActiveVoices) {{\n"
+                    f"                    for (int v = _prevActiveVoices; v < activeVoices; v++) _rnbo[v].setParameterValue(PARAM_{lbl}, val_{i});\n"
+                    f"                }}"
+                )
+        param_sends = "\n".join(param_sends_lines)
         param_sends += "\n                _prevActiveVoices = activeVoices;"
 
         process_loop = "            for (int v = 0; v < activeVoices; v++) {\n"
@@ -237,14 +257,30 @@ def gen_module_cpp(info: PatchInfo, panel_hp: int,
 
         out_read = "\n".join(f"        outputs[{c.label}_ID].setVoltage(rack::math::clamp((float)_outBuf[{i}][_blkPos], -12.0f, 12.0f));" for i, c in enumerate(output_comps[:n_ao]))
 
-        param_sends = "\n".join(
-            f"                float val_{i} = rack::math::clamp(params[{_param_label(p)}_ID].getValue(), {p.minimum}f, {p.maximum}f);\n"
-            f"                if (val_{i} != _prevParam[{i}]) {{\n"
-            f"                    _prevParam[{i}] = val_{i};\n"
-            f"                    _rnbo.setParameterValue(PARAM_{_param_label(p)}, val_{i});\n"
-            f"                }}"
-            for i, p in enumerate(in_p)
-        )
+        param_sends_lines = []
+        for i, p in enumerate(in_p):
+            lbl = _param_label(p)
+            is_trigger = getattr(p, "ui_type", "") == "trigger"
+            if is_trigger:
+                param_sends_lines.append(
+                    f"                float val_{i} = rack::math::clamp(params[{lbl}_ID].getValue(), {p.minimum}f, {p.maximum}f);\n"
+                    f"                if (val_{i} > 0.0f && _prevParam[{i}] == 0.0f) {{\n"
+                    f"                    _prevParam[{i}] = val_{i};\n"
+                    f"                    _rnbo.setParameterValue(PARAM_{lbl}, val_{i});\n"
+                    f"                }}\n"
+                    f"                else if (std::fabs(val_{i} - _prevParam[{i}]) > 1e-6f) {{\n"
+                    f"                    _prevParam[{i}] = val_{i};\n"
+                    f"                }}"
+                )
+            else:
+                param_sends_lines.append(
+                    f"                float val_{i} = rack::math::clamp(params[{lbl}_ID].getValue(), {p.minimum}f, {p.maximum}f);\n"
+                    f"                if (std::fabs(val_{i} - _prevParam[{i}]) > 1e-6f) {{\n"
+                    f"                    _prevParam[{i}] = val_{i};\n"
+                    f"                    _rnbo.setParameterValue(PARAM_{lbl}, val_{i});\n"
+                    f"                }}"
+                )
+        param_sends = "\n".join(param_sends_lines)
 
         process_loop = ""
         if n_ai > 0: process_loop += "\n".join(f"            _inPtrs[{i}] = _inBuf[{i}];" for i in range(n_ai)) + "\n"
@@ -255,6 +291,7 @@ def gen_module_cpp(info: PatchInfo, panel_hp: int,
 
     return f"""\
 #include <cmath>
+#include <string>
 #include "plugin.hpp"
 #include "RNBO.h"
 
