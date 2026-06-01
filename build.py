@@ -1,4 +1,4 @@
-#!/usr/风env python3
+#!/usr/bin/env python3
 # ─────────────────────────────────────────────────────────────────────────────
 # build.py  —  rnbo2vcv master build script
 # ─────────────────────────────────────────────────────────────────────────────
@@ -27,16 +27,30 @@ CUSTOM_PORTS  = "yes"
 
 def prompt_with_default(prompt_text, default_value):
     val = input(f"{prompt_text} [{default_value}]: ").strip()
+    val = re.sub(r'\s+', ' ', val)
     return val if val else default_value
 
-def auto_detect_rnbo_dir(default_dir):
-    def has_cpp(d):
-        return any(f.suffix == '.cpp' for f in d.iterdir() if f.is_file())
-    if Path("description.json").exists() and has_cpp(Path(".")):
-        return "."
-    for d in Path(".").iterdir():
-        if d.is_dir() and (d / "description.json").exists() and has_cpp(d):
-            return d.name
+def auto_detect_rnbo_dir(script_dir, default_dir):
+    script_dir = Path(script_dir)
+    def is_rnbo_export(d):
+        return (d / "description.json").exists() and (d / "rnbo").is_dir() and any(f.suffix == '.cpp' for f in d.iterdir() if f.is_file())
+        
+    try:
+        if is_rnbo_export(script_dir):
+            return "."
+    except (PermissionError, OSError):
+        pass
+
+    try:
+        for d in script_dir.iterdir():
+            try:
+                if d.is_dir() and is_rnbo_export(d):
+                    return d.name
+            except (PermissionError, OSError):
+                continue
+    except (PermissionError, OSError):
+        pass
+        
     return default_dir
 
 def _interactive_layout(base_cmd, cache_path, env, prompt_positions=True, prompt_ports=True):
@@ -155,8 +169,11 @@ def _interactive_layout(base_cmd, cache_path, env, prompt_positions=True, prompt
                         print(f"    ⚠ Invalid input '{val}'. Try again or press Enter to skip.")
 
     cache_data = {"version": 2, "panel_hp": panel_hp, "positions": overrides}
-    cache_path.write_text(json.dumps(cache_data, indent=2) + "\n", encoding="utf-8")
-    print(f"\n  ✓ Saved {len(overrides)} override(s) to {cache_path.name}\n")
+    try:
+        cache_path.write_text(json.dumps(cache_data, indent=2) + "\n", encoding="utf-8")
+        print(f"\n  ✓ Saved {len(overrides)} override(s) to {cache_path.name}\n")
+    except OSError as e:
+        print(f"\n  ⚠ WARNING: Could not save layout cache to {cache_path.name}: {e}\n")
 
 
 def main():
@@ -184,13 +201,15 @@ def main():
     version = args.version
     license_str = args.license
 
+    SCRIPT_DIR = Path(__file__).parent.resolve()
+
     if not args.non_interactive:
         print("─────────────────────────────────────────────────────────────────────────────")
         print("  rnbo2vcv Configuration")
         print("  Press Enter to accept the default values.")
         print("─────────────────────────────────────────────────────────────────────────────")
         if not rnbo_dir:
-            auto_rnbo = auto_detect_rnbo_dir("export")
+            auto_rnbo = auto_detect_rnbo_dir(SCRIPT_DIR, "export")
             print("\n  [RNBO_DIR]: The folder containing your RNBO C++ export (e.g. 'rnbo_export').")
             rnbo_dir = prompt_with_default("  RNBO Export Directory", auto_rnbo)
         if not module_name:
@@ -265,10 +284,11 @@ def main():
         sys.exit(f"ERROR: Version '{version}' must start with '2.' for VCV Rack 2.")
 
     if not rnbo_dir:
-        rnbo_dir = auto_detect_rnbo_dir("export")
+        rnbo_dir = auto_detect_rnbo_dir(SCRIPT_DIR, "export")
 
-    SCRIPT_DIR = Path(__file__).parent.resolve()
     RNBO_DIR = Path(rnbo_dir).resolve()
+    if not RNBO_DIR.exists(): sys.exit(f"ERROR: RNBO export directory '{RNBO_DIR}' does not exist. Did you export from RNBO?")
+
     OUT_DIR = SCRIPT_DIR / "rack_plugin"
     
     # This path must match the C++ source directory expected by the generated Makefile template in rnbo2vcv/writer.py
@@ -280,16 +300,29 @@ def main():
     system = platform.system()
     machine = platform.machine().lower()
 
-    if system == "Linux": rack_platform = "lin-arm64" if "aarch64" in machine or "arm" in machine else "lin-x64"; install_base = Path.home() / ".local" / "share" / "Rack2" / f"plugins-{rack_platform}"
-    elif system == "Darwin": rack_platform = "mac-arm64" if "arm64" in machine else "mac-x64"; install_base = Path.home() / "Library" / "Application Support" / "Rack2" / f"plugins-{rack_platform}"
-    elif system == "Windows" or os.environ.get("MSYSTEM", "").startswith("MINGW"): rack_platform = "win-x64"; install_base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "Rack2" / f"plugins-{rack_platform}"
-    else: rack_platform = "lin-x64"; install_base = Path.home() / ".local" / "share" / "Rack2" / f"plugins-{rack_platform}"
+    if system == "Linux":
+        rack_platform = "lin-arm64" if "aarch64" in machine or "arm" in machine else "lin-x64"
+        install_base = Path.home() / ".local" / "share" / "Rack2" / f"plugins-{rack_platform}"
+    elif system == "Darwin":
+        rack_platform = "mac-arm64" if "arm64" in machine else "mac-x64"
+        install_base = Path.home() / "Library" / "Application Support" / "Rack2" / f"plugins-{rack_platform}"
+    elif system == "Windows" or os.environ.get("MSYSTEM", "").startswith("MINGW"):
+        rack_platform = "win-x64"
+        install_base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "Rack2" / f"plugins-{rack_platform}"
+    else:
+        rack_platform = "lin-x64"
+        install_base = Path.home() / ".local" / "share" / "Rack2" / f"plugins-{rack_platform}"
 
     install_dir = install_base / plugin_slug
     
-    if install_dir.resolve() == install_base.resolve() or install_dir.resolve() == install_base.parent.resolve(): sys.exit("ERROR: Install dir resolved to base directory")
-    if OUT_DIR.resolve() == SCRIPT_DIR.resolve() or OUT_DIR.resolve() == Path("/").resolve(): sys.exit("ERROR: OUT_DIR resolved dangerously")
-    if not str(OUT_DIR.resolve()).startswith(str(SCRIPT_DIR.resolve())): sys.exit("ERROR: OUT_DIR is outside project directory")
+    if install_dir.resolve() == install_base.resolve() or install_dir.resolve() == install_base.parent.resolve():
+        sys.exit("ERROR: Install dir resolved to base directory")
+        
+    if OUT_DIR.resolve() == SCRIPT_DIR.resolve() or OUT_DIR.resolve() == Path("/").resolve():
+        sys.exit("ERROR: OUT_DIR resolved dangerously")
+        
+    if not str(OUT_DIR.resolve()).startswith(str(SCRIPT_DIR.resolve())):
+        sys.exit("ERROR: OUT_DIR is outside project directory")
 
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     print("  rnbo2vcv  —  generating plugin files")
@@ -350,25 +383,36 @@ def main():
         if layout_cache_path.exists():
             generator_cmd.extend(["--layout-file", str(layout_cache_path)])
 
-    subprocess.run(generator_cmd, check=True, env=env)
+    try:
+        subprocess.run(generator_cmd, check=True, env=env)
+    except subprocess.CalledProcessError as e:
+        sys.exit(f"ERROR: Generator failed (exit {e.returncode}). Check the output above.")
+    except FileNotFoundError:
+        sys.exit(f"ERROR: Could not find writer.py at {SCRIPT_DIR / 'rnbo2vcv' / 'writer.py'}")
 
     print(f"\n  Copying RNBO C++ sources → {OUT_DIR.name}/{RNBO_SRC}/")
     rnbo_dest = OUT_DIR / RNBO_SRC
     rnbo_dest.mkdir(parents=True, exist_ok=True)
-    if not RNBO_DIR.exists(): sys.exit(f"ERROR: {RNBO_DIR} does not exist.")
 
     for item in RNBO_DIR.iterdir():
         if item.is_symlink(): continue
         if item.name == "rnbo" and item.is_dir():
             shutil.copytree(item, rnbo_dest / "rnbo", dirs_exist_ok=True)
-        elif item.suffix == ".cpp" or item.suffix == ".h":
+        elif item.suffix == ".cpp" or item.suffix == ".h" or item.name == "description.json":
             shutil.copy2(item, rnbo_dest)
 
     print("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     print(f"  make  (RACK_DIR={RACK_DIR})")
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-    if not RACK_DIR.is_dir(): sys.exit(f"ERROR: Rack-SDK not found at '{RACK_DIR}'")
-    subprocess.run(["make", "-C", str(OUT_DIR), f"RACK_DIR={RACK_DIR}"], check=True)
+    if not RACK_DIR.is_dir():
+        sys.exit(f"ERROR: Rack-SDK not found at '{RACK_DIR}'.\nDownload the correct SDK for your OS from vcvrack.com/downloads and place it as 'Rack-SDK/'.")
+        
+    try:
+        subprocess.run(["make", "-C", str(OUT_DIR), f"RACK_DIR={RACK_DIR}"], check=True)
+    except subprocess.CalledProcessError as e:
+        sys.exit(f"ERROR: Compilation failed (exit {e.returncode}). See make output above.")
+    except FileNotFoundError:
+        sys.exit("ERROR: 'make' not found. Install build tools (Linux: apt install build-essential / Windows: see MSYS2 setup in README).")
 
     print("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     print(f"  Installing → {install_dir}")
