@@ -1,0 +1,18 @@
+{
+  "version": 2,
+  "panel_hp": 12,
+  "positions": {
+    "PITCH_IN": {
+      "port_type": "cvi"
+    },
+    "CUTOFF_IN": {
+      "port_type": "cvi"
+    },
+    "RES_IN": {
+      "port_type": "cvi"
+    },
+    "OUT_1": {
+      "port_type": "audioo"
+    }
+  }
+}
