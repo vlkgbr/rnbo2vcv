@@ -96,6 +96,7 @@ Available flags:
 - `--polyphony <yes|no>`: Enable 16-voice polyphony
 - `--custom-layout <yes|no>`: Enable interactive component placement
 - `--custom-ports <yes|no>`: Customize jack types via prompt
+- `--menu <string>`: Pre-fill menu entries to bypass prompts (e.g. `MODE:Sine,Tri;LFO:A,B`)
 - `--non-interactive`: Skips the interactive prompt entirely. Any arguments you don't specify will fall back to their defaults.
 
 Example:
@@ -193,12 +194,18 @@ Encode the **control type** and **column grouping** in the parameter name:
 | `button_` | Momentary button | `VCVButton` | Gate behavior (1.0 while held, 0.0 on release) |
 | `trigger_` | Momentary button | `VCVButton` | Bang/trigger behavior (Sends 1.0 on press, ignores release) |
 | `switch_` | Toggle switch | `CKSS` | Binary mode selection (0.0 / 1.0) |
+| `menu_` | Dropdown menu | `CustomMenuWidget` | Option selection (e.g., waveforms). Prompts for labels during build. |
+| `stepN_` | Stepped knob | `StepKnob` | Integer selection in increments of N (e.g., `step1_`, `step2_`). |
 
 > **`attenv_` vs `atten_`:** Both produce small controls, but they use different Rack widgets. `attenv_` uses `RoundSmallBlackKnob` (a knob you turn); `atten_` uses `Trimpot` (a smaller screwdriver-style trim pot). The parameter range is set automatically from your RNBO `@min`/`@max` values.
 
 > **`button_` vs `trigger_`:** Both render as the same physical button widget, but behave differently under the hood. 
 > - Use `button_` if you want a **Gate** (e.g. holding it down keeps an envelope open). It sends 1.0 when pressed and 0.0 when released.
 > - Use `trigger_` if you want a **Bang**. It sends a single 1.0 value on the exact moment you press it and ignores the release.
+
+> **`menu_`:** Generates a custom dropdown menu widget. The number of items in the menu is determined by your `@min` and `@max` values. During the interactive build, you will be prompted to assign names to each menu entry (e.g. Sine, Triangle, Saw). The widget outputs integers based on the selected option.
+
+> **`stepN_`:** Creates a stepped rotary knob that securely clicks into discrete values instead of turning smoothly. Replace `N` with the desired step size. For example, `step1_octave` with `@min 1 @max 5` will output exactly 1, 2, 3, 4, 5. `step3_` would output 1, 4, 7... Perfect for clock dividers, octaves, or multi-state integer parameters.
 
 Parameters sharing the same `[core_name]` are grouped in one **vertical column** on the panel. Column order (top to bottom):
 1. `base_` knob

@@ -13,7 +13,7 @@ import re
 from pathlib import Path
 
 # ── Config block ──────────────────────────────────────────────────────────────
-MODULE_NAME  = "MyPatch"
+MODULE_NAME  = "MyModule"
 PLUGIN_SLUG  = "MyPlugin"
 MANUFACTURER = "YourName"
 AUTHOR       = "YourName"
@@ -53,7 +53,7 @@ def auto_detect_rnbo_dir(script_dir, default_dir):
         
     return default_dir
 
-def _interactive_layout(base_cmd, cache_path, env, prompt_positions=True, prompt_ports=True):
+def _interactive_layout(base_cmd, cache_path, env, prompt_positions=True, prompt_ports=True, menu_arg=None):
     _VALID_PORT_TYPES = {"cvi", "cvo", "audioi", "audioo", "inl", "inr", "outl", "outr"}
     dump_file = Path(".rnbo2vcv_dump.json").resolve()
     dump_cmd = base_cmd + ["--dump-layout-file", str(dump_file)]
@@ -72,20 +72,38 @@ def _interactive_layout(base_cmd, cache_path, env, prompt_positions=True, prompt
         if dump_file.exists(): dump_file.unlink()
     components = layout_data.get("components", [])
     panel_hp = layout_data.get("panel_hp", 10)
-    controls = [c for c in components if c["kind"] == "param"]
+    controls = [c for c in components if c["kind"] == "param" and c.get("knob_type") != "CustomMenuWidget"]
+    menus    = [c for c in components if c["kind"] == "param" and c.get("knob_type") == "CustomMenuWidget"]
     jacks    = [c for c in components if c["kind"] in ("input", "output")]
 
     print(f"\n  Panel: {panel_hp} HP  ({panel_hp * 5.08:.1f} mm)")
-    print(f"  {len(controls)} control(s), {len(jacks)} jack(s) detected.")
+    print(f"  {len(controls)} control(s), {len(menus)} menu(s), {len(jacks)} jack(s) detected.")
 
     overrides = {}
+    menu_entries = {}
+
+    if menu_arg:
+        for group in menu_arg.split(";"):
+            if ":" in group:
+                k, v = group.split(":", 1)
+                k = k.strip().upper()
+                matched = k
+                for m in menus:
+                    if m["label"] == k or m["label"].replace("_MENU", "") == k.replace("MENU_", ""):
+                        matched = m["label"]
+                        break
+                menu_entries[matched] = [x.strip() for x in v.split(",")]
+            else:
+                if len(menus) == 1:
+                    menu_entries[menus[0]["label"]] = [x.strip() for x in group.split(",")]
     if prompt_positions:
         print("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         print("  STEP 1: Control Placement (Knobs, Buttons, Switches)")
         print("  Press [Enter] to keep auto-position, or type: x, y")
         print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         for c in controls:
-            prompt = f"  {c['label']:20s} [{c['x']:.1f}, {c['y']:.1f}]: "
+
+            prompt = f"  {c['label']:20s} ({kt:12s}) [{c['x']:.1f}, {c['y']:.1f}]: "
             while True:
                 val = input(prompt).strip()
                 if not val: break
@@ -127,7 +145,8 @@ def _interactive_layout(base_cmd, cache_path, env, prompt_positions=True, prompt
 
         for c in jacks:
             direction = "Input Jack" if c["kind"] == "input" else "Output Jack"
-            prompt = f"  {c['label']:20s} ({direction:12s}) [{c['x']:.1f}, {c['y']:.1f}]: "
+            ptype_hint = f" [{c.get('port_type')}]" if c.get('port_type') else " []"
+            prompt = f"  {c['label']:20s} ({direction:12s}) [{c['x']:.1f}, {c['y']:.1f}]{ptype_hint}: "
             while True:
                 val = input(prompt).strip()
                 if not val: break
@@ -168,10 +187,33 @@ def _interactive_layout(base_cmd, cache_path, env, prompt_positions=True, prompt
                     else:
                         print(f"    ⚠ Invalid input '{val}'. Try again or press Enter to skip.")
 
-    cache_data = {"version": 2, "panel_hp": panel_hp, "positions": overrides}
+    if menus:
+        print("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        print("  Menu Content Configuration")
+        print("  Provide a label for each menu item.")
+        print("  Press [Enter] to use the default index number.")
+        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        for m in menus:
+            if m["label"] in menu_entries:
+                continue
+            print(f"\n  Configuring '{m['label']}':")
+            max_allowed = int(m.get("max", 0.0) - m.get("min", 0.0) + 1) if m.get("max", 0) > 0 else 0
+            if max_allowed <= 0:
+                print(f"    ⚠ Cannot determine number of items for {m['label']}, skipping.")
+                continue
+            
+            items = []
+            for i in range(1, max_allowed + 1):
+                val = input(f"    {i} - ").strip()
+                if not val:
+                    val = str(i)
+                items.append(val)
+            menu_entries[m["label"]] = items
+
+    cache_data = {"version": 2, "panel_hp": panel_hp, "positions": overrides, "menus": menu_entries}
     try:
         cache_path.write_text(json.dumps(cache_data, indent=2) + "\n", encoding="utf-8")
-        print(f"\n  ✓ Saved {len(overrides)} override(s) to {cache_path.name}\n")
+        print(f"\n  ✓ Saved {len(overrides)} override(s) and {len(menu_entries)} menu config(s) to {cache_path.name}\n")
     except OSError as e:
         print(f"\n  ⚠ WARNING: Could not save layout cache to {cache_path.name}: {e}\n")
 
@@ -190,6 +232,7 @@ def main():
     parser.add_argument("--polyphony", default="no", choices=["yes", "no", "y", "n"])
     parser.add_argument("--custom-layout", default=CUSTOM_LAYOUT, choices=["yes", "no", "y", "n"])
     parser.add_argument("--custom-ports", default=CUSTOM_PORTS, choices=["yes", "no", "y", "n"])
+    parser.add_argument("--menu", default=None)
     parser.add_argument("--non-interactive", action="store_true")
     args = parser.parse_args()
 
@@ -374,9 +417,9 @@ def main():
         if cache_valid and not args.non_interactive:
             reuse = prompt_with_default("\n  Found saved layout. Use saved layout/types?", "yes")
             if reuse.lower() not in ("yes", "y"):
-                _interactive_layout(generator_cmd, layout_cache_path, env, prompt_positions=use_custom_layout, prompt_ports=use_custom_ports)
+                _interactive_layout(generator_cmd, layout_cache_path, env, prompt_positions=use_custom_layout, prompt_ports=use_custom_ports, menu_arg=args.menu)
         elif not cache_valid and not args.non_interactive:
-            _interactive_layout(generator_cmd, layout_cache_path, env, prompt_positions=use_custom_layout, prompt_ports=use_custom_ports)
+            _interactive_layout(generator_cmd, layout_cache_path, env, prompt_positions=use_custom_layout, prompt_ports=use_custom_ports, menu_arg=args.menu)
         elif not cache_valid and args.non_interactive:
             sys.exit("ERROR: Stale or invalid layout cache in non-interactive mode. Aborting.")
         

@@ -8,6 +8,9 @@ HP_MM = 5.08
 PANEL_H_MM = 128.5
 
 def _resolve_widget(c: ComponentPos, custom_widgets: Optional[CustomWidgets] = None) -> str:
+    if c.kind == "param" and c.knob_type == "CustomMenuWidget":
+        return f"CustomMenuWidget_{c.label}"
+
     if custom_widgets is None:
         if c.kind == "param":
             kt = c.knob_type or "RoundBlackKnob"
@@ -21,6 +24,7 @@ def _resolve_widget(c: ComponentPos, custom_widgets: Optional[CustomWidgets] = N
             "RoundSmallBlackKnob": ("knob_small",   "CustomSmallKnob"),
             "Trimpot":             ("knob_trim",     "CustomTrimKnob"),
             "RoundBlackKnob":      ("knob_default",  "CustomDefaultKnob"),
+            "StepKnob":            ("step_knob",     "CustomStepKnob"),
             "VCVButton":           ("button",        "CustomButton"),
             "VCVTrigger":          ("trigger",       "CustomTrigger"),
             "CKSS":                ("_switch",       "CustomSwitch"),
@@ -32,6 +36,7 @@ def _resolve_widget(c: ComponentPos, custom_widgets: Optional[CustomWidgets] = N
                     return custom_cls
             elif getattr(custom_widgets, attr, False):
                 return custom_cls
+        if kt == "StepKnob": kt = "RoundBlackKnob"
         rack_kt = "VCVButton" if kt == "VCVTrigger" else kt
         return f"rack::{rack_kt}"
 
@@ -54,8 +59,8 @@ def _resolve_widget(c: ComponentPos, custom_widgets: Optional[CustomWidgets] = N
     return "rack::PJ301MPort"
 
 
-def gen_custom_widget_structs(custom_widgets: Optional[CustomWidgets] = None) -> str:
-    if custom_widgets is None:
+def gen_custom_widget_structs(custom_widgets: Optional[CustomWidgets] = None, menu_entries: Optional[Dict[str, List[str]]] = None) -> str:
+    if custom_widgets is None and not menu_entries:
         return ""
     structs: List[str] = []
 
@@ -63,6 +68,7 @@ def gen_custom_widget_structs(custom_widgets: Optional[CustomWidgets] = None) ->
     if custom_widgets.knob_small: structs.append('struct CustomSmallKnob : rack::app::SvgKnob { CustomSmallKnob() { minAngle = -0.83 * M_PI; maxAngle = 0.83 * M_PI; setSvg(rack::Svg::load(rack::asset::plugin(pluginInstance, "res/knob_small.svg"))); } };')
     if custom_widgets.knob_trim: structs.append('struct CustomTrimKnob : rack::app::SvgKnob { CustomTrimKnob() { minAngle = -0.83 * M_PI; maxAngle = 0.83 * M_PI; setSvg(rack::Svg::load(rack::asset::plugin(pluginInstance, "res/knob_trim.svg"))); } };')
     if custom_widgets.knob_default: structs.append('struct CustomDefaultKnob : rack::app::SvgKnob { CustomDefaultKnob() { minAngle = -0.83 * M_PI; maxAngle = 0.83 * M_PI; setSvg(rack::Svg::load(rack::asset::plugin(pluginInstance, "res/knob_default.svg"))); } };')
+    if custom_widgets.step_knob: structs.append('struct CustomStepKnob : rack::app::SvgKnob { CustomStepKnob() { minAngle = -0.83 * M_PI; maxAngle = 0.83 * M_PI; setSvg(rack::Svg::load(rack::asset::plugin(pluginInstance, "res/step_knob.svg"))); } };')
 
     if custom_widgets.button: structs.append('struct CustomButton : rack::app::SvgSwitch { CustomButton() { momentary = true; addFrame(rack::Svg::load(rack::asset::plugin(pluginInstance, "res/button.svg"))); addFrame(rack::Svg::load(rack::asset::plugin(pluginInstance, "res/button_pressed.svg"))); } };')
     if custom_widgets.trigger: structs.append('struct CustomTrigger : rack::app::SvgSwitch { CustomTrigger() { momentary = true; addFrame(rack::Svg::load(rack::asset::plugin(pluginInstance, "res/trigger.svg"))); addFrame(rack::Svg::load(rack::asset::plugin(pluginInstance, "res/trigger_pressed.svg"))); } };')
@@ -74,6 +80,102 @@ def gen_custom_widget_structs(custom_widgets: Optional[CustomWidgets] = None) ->
     if custom_widgets.port_audio_out: structs.append('struct CustomAudioOutputPort : rack::app::SvgPort { CustomAudioOutputPort() { setSvg(rack::Svg::load(rack::asset::plugin(pluginInstance, "res/port_audio_out.svg"))); } };')
     if custom_widgets.port_in: structs.append('struct CustomInputPort : rack::app::SvgPort { CustomInputPort() { setSvg(rack::Svg::load(rack::asset::plugin(pluginInstance, "res/port_in.svg"))); } };')
     if custom_widgets.port_out: structs.append('struct CustomOutputPort : rack::app::SvgPort { CustomOutputPort() { setSvg(rack::Svg::load(rack::asset::plugin(pluginInstance, "res/port_out.svg"))); } };')
+
+    if menu_entries:
+        base_menu = '''
+struct CustomMenuWidget : rack::app::ParamWidget {
+    std::vector<std::string> entries;
+    
+    CustomMenuWidget() {
+        box.size = rack::mm2px(rack::Vec(18.0f, 5.0f));
+    }
+
+    void draw(const DrawArgs& args) override {
+        // Uniform grey appearance, independent of light/dark mode
+        NVGcolor bgColor = nvgRGBA(45, 45, 45, 255);
+        NVGcolor fgColor = nvgRGBA(230, 230, 230, 255);
+        
+        nvgBeginPath(args.vg);
+        nvgRoundedRect(args.vg, 0, 0, box.size.x, box.size.y, rack::mm2px(0.5f));
+        nvgFillColor(args.vg, bgColor);
+        nvgFill(args.vg);
+        
+        nvgStrokeWidth(args.vg, 0.5f);
+        nvgStrokeColor(args.vg, nvgRGBA(0, 0, 0, 255));
+        nvgStroke(args.vg);
+        
+        if (!getParamQuantity()) return;
+        
+        float val = getParamQuantity()->getValue();
+        float minVal = getParamQuantity()->getMinValue();
+        int idx = std::round(val - minVal);
+        if (idx < 0) idx = 0;
+        if (idx >= (int)entries.size()) idx = entries.size() - 1;
+        
+        std::string text = entries.empty() ? "" : entries[idx];
+        
+        std::shared_ptr<rack::window::Font> font = APP->window->uiFont;
+        if (font) {
+            nvgFontSize(args.vg, rack::mm2px(2.5f));
+            nvgFontFaceId(args.vg, font->handle);
+            nvgFillColor(args.vg, fgColor);
+            nvgTextAlign(args.vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+            nvgText(args.vg, box.size.x / 2, box.size.y / 2 + 1.0f, text.c_str(), nullptr);
+            
+            // Draw downward arrow
+            nvgBeginPath(args.vg);
+            float ax = box.size.x - rack::mm2px(2.5f);
+            float ay = box.size.y / 2.0f + 1.0f;
+            float aw = rack::mm2px(0.8f);
+            float ah = rack::mm2px(0.6f);
+            nvgMoveTo(args.vg, ax - aw, ay - ah);
+            nvgLineTo(args.vg, ax + aw, ay - ah);
+            nvgLineTo(args.vg, ax, ay + ah);
+            nvgFillColor(args.vg, fgColor);
+            nvgFill(args.vg);
+        }
+    }
+
+    struct MenuActionItem : rack::ui::MenuItem {
+        CustomMenuWidget* widget;
+        int index;
+        float minVal;
+        void onAction(const rack::event::Action& e) override {
+            widget->getParamQuantity()->setValue(minVal + index);
+        }
+    };
+
+    void onButton(const rack::event::Button& e) override {
+        if (e.action == GLFW_PRESS && e.button == GLFW_MOUSE_BUTTON_LEFT) {
+            e.consume(this);
+            rack::ui::Menu* menu = rack::createMenu();
+            menu->box.pos = getAbsoluteOffset(rack::Vec(0, box.size.y));
+            
+            float minVal = getParamQuantity()->getMinValue();
+            for (size_t i = 0; i < entries.size(); i++) {
+                MenuActionItem* item = new MenuActionItem();
+                item->text = entries[i];
+                item->widget = this;
+                item->index = i;
+                item->minVal = minVal;
+                item->rightText = rack::string::f(rack::math::clamp(getParamQuantity()->getValue(), minVal, getParamQuantity()->getMaxValue()) == minVal + i ? "✔" : "");
+                menu->addChild(item);
+            }
+        } else {
+            ParamWidget::onButton(e);
+        }
+    }
+};'''
+        structs.append(base_menu)
+        for label, items in menu_entries.items():
+            items_c = ", ".join(f'"{i}"' for i in items)
+            structs.append(
+                f'struct CustomMenuWidget_{label} : CustomMenuWidget {{\n'
+                f'    CustomMenuWidget_{label}() {{\n'
+                f'        entries = {{{items_c}}};\n'
+                f'    }}\n'
+                f'}};'
+            )
 
     if not structs: return ""
     return "\n// ── Custom SVG Widgets ────────────────────────────────────────────────────\n\n" + "\n\n".join(structs) + "\n"
@@ -95,14 +197,15 @@ def _addchild_lines(components: List[ComponentPos], mn: str, panel_hp: int, ui_t
             elif kt == "CKSS": label_y = c.y + 4.0 + 2.2
             elif c.kind == "param": label_y = c.y + (11.0 if kt == _UI_PREFIXES["base"] else 3.0) + 2.0
             else: label_y = c.y + 4.5 + 2.2
-            ui_lbl = c.ui_label or c.label.replace("_", " ")
-            if ui_lbl.startswith("ATTENV "): ui_lbl = ui_lbl[7:]
-            elif ui_lbl.startswith("ATTEN "): ui_lbl = ui_lbl[6:]
-            elif ui_lbl.endswith(" ATTENV"): ui_lbl = ui_lbl[:-7]
-            elif ui_lbl.endswith(" ATTEN"): ui_lbl = ui_lbl[:-6]
-            font_sz = "2.4f" if c.kind == "param" else "2.0f"
-            pos_lbl = f"rack::mm2px(rack::Vec({c.x:.2f}f, {label_y:.2f}f))"
-            lines.append(f'        addChild(new TextLabel({pos_lbl}, "{ui_lbl}", {font_sz}));')
+            if kt != "CustomMenuWidget":
+                ui_lbl = c.ui_label or c.label.replace("_", " ")
+                if ui_lbl.startswith("ATTENV "): ui_lbl = ui_lbl[7:]
+                elif ui_lbl.startswith("ATTEN "): ui_lbl = ui_lbl[6:]
+                elif ui_lbl.endswith(" ATTENV"): ui_lbl = ui_lbl[:-7]
+                elif ui_lbl.endswith(" ATTEN"): ui_lbl = ui_lbl[:-6]
+                font_sz = "2.4f" if c.kind == "param" else "2.0f"
+                pos_lbl = f"rack::mm2px(rack::Vec({c.x:.2f}f, {label_y:.2f}f))"
+                lines.append(f'        addChild(new TextLabel({pos_lbl}, "{ui_lbl}", {font_sz}));')
 
     if ui_text.lower() in ("yes", "y", "true", "1"):
         w = panel_hp * 5.08
@@ -135,7 +238,8 @@ def gen_module_cpp(info: PatchInfo, panel_hp: int,
                    block_size: int,
                    ui_text: str = "yes",
                    polyphony: bool = False,
-                   custom_widgets: Optional[CustomWidgets] = None) -> str:
+                   custom_widgets: Optional[CustomWidgets] = None,
+                   menu_entries: Optional[Dict[str, List[str]]] = None) -> str:
     mn = info.name
     n_ai = info.num_input_channels
     n_ao = info.num_output_channels
@@ -164,7 +268,10 @@ def gen_module_cpp(info: PatchInfo, panel_hp: int,
         if p is None:
             cfg_lines.append(f'        configParam({c.label}_ID, 0.0f, 1.0f, 0.5f, "{c.label}");')
         else:
-            cfg_lines.append(f'        configParam({c.label}_ID, {p.minimum}f, {p.maximum}f, {p.default}f, "{p.name}");')
+            if getattr(p, "step_size", 0.0) > 0.0:
+                cfg_lines.append(f'        configParam<StepQuantity>({c.label}_ID, {p.minimum}f, {p.maximum}f, {p.default}f, "{p.name}")->stepSize = {p.step_size}f;')
+            else:
+                cfg_lines.append(f'        configParam({c.label}_ID, {p.minimum}f, {p.maximum}f, {p.default}f, "{p.name}");')
 
     for c in audio_in_comps: cfg_lines.append(f'        configInput({c.label}_ID, "{c.label}");')
     for c in output_comps: cfg_lines.append(f'        configOutput({c.label}_ID, "{c.label}");')
@@ -295,6 +402,17 @@ def gen_module_cpp(info: PatchInfo, panel_hp: int,
 #include "plugin.hpp"
 #include "RNBO.h"
 
+struct StepQuantity : rack::engine::ParamQuantity {{
+    float stepSize = 1.0f;
+    void setValue(float v) override {{
+        if (stepSize > 0.0f) {{
+            float mn = getMinValue();
+            v = mn + std::round((v - mn) / stepSize) * stepSize;
+        }}
+        rack::engine::ParamQuantity::setValue(v);
+    }}
+}};
+
 struct {mn}Module : rack::Module {{
 #ifndef BLOCK_SIZE
     static constexpr int BLOCK = {block_size};
@@ -325,10 +443,15 @@ struct {mn}Module : rack::Module {{
         config(NUM_PARAM_IDS, NUM_INPUT_IDS, NUM_OUTPUT_IDS, NUM_LIGHT_IDS);
 {config_block}
 {prepare_block}
+        // Initialize _prevParam to an impossible value (-1e9f) so the very first
+        // process block forces a sync of the current VCV knob states to the DSP.
+        for (int i = 0; i < {max(n_knobs, 1)}; i++) _prevParam[i] = -1e9f;
     }}
 
     void onSampleRateChange(const SampleRateChangeEvent &e) override {{
 {sr_block}
+        // Force re-sync of all parameters when context is recreated
+        for (int i = 0; i < {max(n_knobs, 1)}; i++) _prevParam[i] = -1e9f;
     }}
 
     void process(const ProcessArgs &args) override {{
@@ -347,7 +470,7 @@ struct {mn}Module : rack::Module {{
     }}
 }};
 
-{gen_custom_widget_structs(custom_widgets)}
+{gen_custom_widget_structs(custom_widgets, menu_entries)}
 struct TextLabel : rack::widget::TransparentWidget {{
     std::string text;
     float fontSizeMm;
@@ -364,7 +487,7 @@ struct TextLabel : rack::widget::TransparentWidget {{
             nvgFontFaceId(args.vg, font->handle);
             nvgFillColor(args.vg, rack::settings::preferDarkPanels ? nvgRGBA(255, 255, 255, 255) : nvgRGBA(0, 0, 0, 255));
             nvgTextAlign(args.vg, NVG_ALIGN_CENTER | NVG_ALIGN_TOP);
-            nvgText(args.vg, 0, 0, text.c_str(), nullptr);
+            nvgText(args.vg, 0.f, 0.f, text.c_str(), nullptr);
         }}
     }}
 }};
@@ -408,11 +531,12 @@ def gen_panel_svg(module_name: str, panel_hp: int,
 
 def generate_all(info: PatchInfo, panel_hp: int, components: List[ComponentPos],
                  block_size: int, ui_text: str, polyphony: bool, rnbo_src_rel: str,
-                 rnbo_dir: Path, custom_widgets: Optional[CustomWidgets] = None) -> Dict[str, str]:
+                 rnbo_dir: Path, custom_widgets: Optional[CustomWidgets] = None,
+                 menu_entries: Optional[Dict[str, List[str]]] = None) -> Dict[str, str]:
     files = {}
     files["plugin.hpp"] = gen_plugin_hpp(info.name)
     files["plugin.cpp"] = gen_plugin_cpp("slug", "name", info.name)
-    files[f"{info.name}.cpp"] = gen_module_cpp(info, panel_hp, components, block_size, ui_text, polyphony, custom_widgets)
+    files[f"{info.name}.cpp"] = gen_module_cpp(info, panel_hp, components, block_size, ui_text, polyphony, custom_widgets, menu_entries)
     
     if not (custom_widgets and custom_widgets.panel):
         files[f"res/{info.name}.svg"] = gen_panel_svg(info.name, panel_hp, bg_color="#E8E8E8", fg_color="#000000")
