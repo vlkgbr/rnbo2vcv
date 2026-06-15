@@ -102,7 +102,7 @@ def _interactive_layout(base_cmd, cache_path, env, prompt_positions=True, prompt
         print("  Press [Enter] to keep auto-position, or type: x, y")
         print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         for c in controls:
-
+            kt = c.get("knob_type", "").replace("Round", "").replace("Black", "").replace("VCV", "")
             prompt = f"  {c['label']:20s} ({kt:12s}) [{c['x']:.1f}, {c['y']:.1f}]: "
             while True:
                 val = input(prompt).strip()
@@ -311,7 +311,6 @@ def main():
         manufacturer = manufacturer or MANUFACTURER
         author = author or AUTHOR
         version = version or VERSION
-        version = version or VERSION
         license_str = license_str or LICENSE
 
     module_name = module_name.strip()
@@ -330,7 +329,11 @@ def main():
         rnbo_dir = auto_detect_rnbo_dir(SCRIPT_DIR, "export")
 
     RNBO_DIR = Path(rnbo_dir).resolve()
-    if not RNBO_DIR.exists(): sys.exit(f"ERROR: RNBO export directory '{RNBO_DIR}' does not exist. Did you export from RNBO?")
+    if not RNBO_DIR.exists():
+        sys.exit(
+            f"ERROR: RNBO export directory '{RNBO_DIR}' does not exist.\n"
+            f"       Did you export from RNBO? Or pass --rnbo-dir <path> explicitly."
+        )
 
     OUT_DIR = SCRIPT_DIR / "rack_plugin"
     
