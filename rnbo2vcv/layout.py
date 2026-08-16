@@ -197,6 +197,9 @@ def _smart_layout(info: PatchInfo, dac_labels: dict) -> Tuple[int, List[Componen
 
     seen_labels: dict[str, int] = {}
     def dedup_label(l: str) -> str:
+        # Note: The first occurrence stores 0 and remains unchanged. 
+        # The first duplicate gets suffix _1, the second _2, etc. 
+        # This is intentional to keep the primary label clean.
         if l in seen_labels:
             seen_labels[l] += 1
             return f"{l}_{seen_labels[l]}"
@@ -443,6 +446,9 @@ def _classic_layout(info: PatchInfo, dac_labels: dict) -> Tuple[int, List[Compon
 
     seen_labels: dict[str, int] = {}
     def dedup_label(l: str) -> str:
+        # Note: The first occurrence stores 0 and remains unchanged. 
+        # The first duplicate gets suffix _1, the second _2, etc. 
+        # This is intentional to keep the primary label clean.
         if l in seen_labels:
             seen_labels[l] += 1
             return f"{l}_{seen_labels[l]}"
@@ -467,12 +473,19 @@ def _classic_layout(info: PatchInfo, dac_labels: dict) -> Tuple[int, List[Compon
     x0 = MARGIN + JACK_SEP / 2
     for i in range(n_ai):
         adc_n = i + 1
-        if stereo_in and adc_n in (1, 2):
-            lbl = "IN_L" if adc_n == 1 else "IN_R"
-            ui_lbl = "IN L" if adc_n == 1 else "IN R"
+        adc_obj = next((inl for inl in info.inlets if inl.get("index") == adc_n), {})
+        tag = adc_obj.get("meta") or adc_obj.get("comment") or adc_obj.get("tag")
+
+        if tag and not (tag.lower().startswith("in") and tag[2:].isdigit()):
+            lbl = sanitize_identifier(tag).upper()
+            ui_lbl = tag.replace("_", " ").upper()
         else:
-            lbl = f"IN_{adc_n}"
-            ui_lbl = "IN" if (n_ai == 1) else f"IN {adc_n}"
+            if stereo_in and adc_n in (1, 2):
+                lbl = "IN_L" if adc_n == 1 else "IN_R"
+                ui_lbl = "IN L" if adc_n == 1 else "IN R"
+            else:
+                lbl = f"IN_{adc_n}"
+                ui_lbl = "IN" if (n_ai == 1) else f"IN {adc_n}"
         lbl = dedup_label(lbl)
         components.append(ComponentPos(
             kind="input", label=lbl,
@@ -485,12 +498,19 @@ def _classic_layout(info: PatchInfo, dac_labels: dict) -> Tuple[int, List[Compon
     x0 = W - MARGIN - JACK_SEP / 2 - (n_out_jacks - 1) * JACK_SEP
     for i in range(n_ao):
         dac_n = i + 1
-        if stereo_out and dac_n in (1, 2):
-            lbl = "OUT_L" if dac_n == 1 else "OUT_R"
-            ui_lbl = "OUT L" if dac_n == 1 else "OUT R"
+        dac_obj = next((outl for outl in info.outlets if outl.get("index") == dac_n), {})
+        tag = dac_obj.get("meta") or dac_obj.get("comment") or dac_obj.get("tag")
+
+        if tag and not (tag.lower().startswith("out") and tag[3:].isdigit()):
+            lbl = sanitize_identifier(tag).upper()
+            ui_lbl = tag.replace("_", " ").upper()
         else:
-            lbl = f"OUT_{dac_n}"
-            ui_lbl = "OUT" if (n_ao == 1) else f"OUT {dac_n}"
+            if stereo_out and dac_n in (1, 2):
+                lbl = "OUT_L" if dac_n == 1 else "OUT_R"
+                ui_lbl = "OUT L" if dac_n == 1 else "OUT R"
+            else:
+                lbl = f"OUT_{dac_n}"
+                ui_lbl = "OUT" if (n_ao == 1) else f"OUT {dac_n}"
         lbl = dedup_label(lbl)
         components.append(ComponentPos(
             kind="output", label=lbl,

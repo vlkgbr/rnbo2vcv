@@ -353,7 +353,10 @@ def main():
         rack_platform = "mac-arm64" if "arm64" in machine else "mac-x64"
         install_base = Path.home() / "Library" / "Application Support" / "Rack2" / f"plugins-{rack_platform}"
     elif system == "Windows" or os.environ.get("MSYSTEM", "").startswith("MINGW"):
-        rack_platform = "win-x64"
+        if "arm" in machine or "aarch64" in machine:
+            rack_platform = "win-arm64"
+        else:
+            rack_platform = "win-x64"
         install_base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "Rack2" / f"plugins-{rack_platform}"
     else:
         rack_platform = "lin-x64"

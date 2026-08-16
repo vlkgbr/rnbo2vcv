@@ -45,8 +45,8 @@ def main() -> None:
                     help="Path to save auto-layout JSON. If provided, writes layout to this file and exits.")
     ap.add_argument("--layout-file", default=None,
                     help="Path to a .rnbo2vcv_layout.json file with saved position overrides.")
-    ap.add_argument("--res-dir",     default="res",
-                    help="Path to the SVG resource folder (default: res/ relative to script).")
+    ap.add_argument("--res-dir",     default=str(Path(__file__).parent.parent / "res"),
+                    help="Directory containing SVG assets (default: ../res)")
     args = ap.parse_args()
 
     rnbo_dir    = Path(args.rnbo_dir).expanduser().resolve()
@@ -64,13 +64,15 @@ def main() -> None:
 
     has_smart = apply_smart_names(info.params)
     use_poly = args.polyphony.lower() in ("yes", "y", "true", "1")
-    panel_hp, components = run_layout(info, {}, has_smart)
+    
+    dac_labels = {p.core_name: p.out_map for p in info.params if p.out_map > 0}
+    panel_hp, components = run_layout(info, dac_labels, has_smart)
 
     print(f"[layout] {panel_hp} HP  ({panel_hp * HP_MM:.1f} mm)  — {len(components)} components")
 
     res_dir = Path(args.res_dir).expanduser().resolve()
-    if not res_dir.is_absolute():
-        res_dir = (Path(__file__).parent / args.res_dir).resolve()
+    if not res_dir.exists():
+        res_dir = (Path(__file__).parent.parent / args.res_dir).resolve()
     custom_widgets: Optional[CustomWidgets] = None
     if res_dir.is_dir():
         custom_widgets = CustomWidgets.from_dir(res_dir)
@@ -156,6 +158,8 @@ def main() -> None:
         polyphony=use_poly,
         rnbo_src_rel=args.rnbo_src,
         rnbo_dir=rnbo_dir,
+        plugin_slug=args.plugin_slug,
+        plugin_name=args.plugin_name if args.plugin_name else args.plugin_slug,
         custom_widgets=custom_widgets,
         menu_entries=menu_entries
     )

@@ -32,9 +32,9 @@ def _resolve_widget(c: ComponentPos, custom_widgets: Optional[CustomWidgets] = N
         if kt in widget_map:
             attr, custom_cls = widget_map[kt]
             if attr == "_switch":
-                if custom_widgets.switch_on and custom_widgets.switch_off:
+                if custom_widgets and custom_widgets.switch_on and custom_widgets.switch_off:
                     return custom_cls
-            elif getattr(custom_widgets, attr, False):
+            elif custom_widgets and getattr(custom_widgets, attr, False):
                 return custom_cls
         if kt == "StepKnob": kt = "RoundBlackKnob"
         rack_kt = "VCVButton" if kt == "VCVTrigger" else kt
@@ -42,18 +42,18 @@ def _resolve_widget(c: ComponentPos, custom_widgets: Optional[CustomWidgets] = N
 
     elif c.kind == "input":
         if c.port_type in ("cvi",):
-            if custom_widgets.port_cv_in: return "CustomCvInputPort"
+            if custom_widgets and custom_widgets.port_cv_in: return "CustomCvInputPort"
         elif c.port_type in ("audioi", "inl", "inr"):
-            if custom_widgets.port_audio_in: return "CustomAudioInputPort"
-        if custom_widgets.port_in: return "CustomInputPort"
+            if custom_widgets and custom_widgets.port_audio_in: return "CustomAudioInputPort"
+        if custom_widgets and custom_widgets.port_in: return "CustomInputPort"
         return "rack::PJ301MPort"
 
     elif c.kind == "output":
         if c.port_type in ("cvo",):
-            if custom_widgets.port_cv_out: return "CustomCvOutputPort"
+            if custom_widgets and custom_widgets.port_cv_out: return "CustomCvOutputPort"
         elif c.port_type in ("audioo", "outl", "outr"):
-            if custom_widgets.port_audio_out: return "CustomAudioOutputPort"
-        if custom_widgets.port_out: return "CustomOutputPort"
+            if custom_widgets and custom_widgets.port_audio_out: return "CustomAudioOutputPort"
+        if custom_widgets and custom_widgets.port_out: return "CustomOutputPort"
         return "rack::PJ301MPort"
 
     return "rack::PJ301MPort"
@@ -64,22 +64,23 @@ def gen_custom_widget_structs(custom_widgets: Optional[CustomWidgets] = None, me
         return ""
     structs: List[str] = []
 
-    if custom_widgets.knob_large: structs.append('struct CustomLargeKnob : rack::app::SvgKnob { CustomLargeKnob() { minAngle = -0.83 * M_PI; maxAngle = 0.83 * M_PI; setSvg(rack::Svg::load(rack::asset::plugin(pluginInstance, "res/knob_large.svg"))); } };')
-    if custom_widgets.knob_small: structs.append('struct CustomSmallKnob : rack::app::SvgKnob { CustomSmallKnob() { minAngle = -0.83 * M_PI; maxAngle = 0.83 * M_PI; setSvg(rack::Svg::load(rack::asset::plugin(pluginInstance, "res/knob_small.svg"))); } };')
-    if custom_widgets.knob_trim: structs.append('struct CustomTrimKnob : rack::app::SvgKnob { CustomTrimKnob() { minAngle = -0.83 * M_PI; maxAngle = 0.83 * M_PI; setSvg(rack::Svg::load(rack::asset::plugin(pluginInstance, "res/knob_trim.svg"))); } };')
-    if custom_widgets.knob_default: structs.append('struct CustomDefaultKnob : rack::app::SvgKnob { CustomDefaultKnob() { minAngle = -0.83 * M_PI; maxAngle = 0.83 * M_PI; setSvg(rack::Svg::load(rack::asset::plugin(pluginInstance, "res/knob_default.svg"))); } };')
-    if custom_widgets.step_knob: structs.append('struct CustomStepKnob : rack::app::SvgKnob { CustomStepKnob() { minAngle = -0.83 * M_PI; maxAngle = 0.83 * M_PI; setSvg(rack::Svg::load(rack::asset::plugin(pluginInstance, "res/step_knob.svg"))); } };')
+    if custom_widgets:
+        if custom_widgets.knob_large: structs.append('struct CustomLargeKnob : rack::app::SvgKnob { CustomLargeKnob() { minAngle = -0.83 * M_PI; maxAngle = 0.83 * M_PI; setSvg(rack::Svg::load(rack::asset::plugin(pluginInstance, "res/knob_large.svg"))); } };')
+        if custom_widgets.knob_small: structs.append('struct CustomSmallKnob : rack::app::SvgKnob { CustomSmallKnob() { minAngle = -0.83 * M_PI; maxAngle = 0.83 * M_PI; setSvg(rack::Svg::load(rack::asset::plugin(pluginInstance, "res/knob_small.svg"))); } };')
+        if custom_widgets.knob_trim: structs.append('struct CustomTrimKnob : rack::app::SvgKnob { CustomTrimKnob() { minAngle = -0.83 * M_PI; maxAngle = 0.83 * M_PI; setSvg(rack::Svg::load(rack::asset::plugin(pluginInstance, "res/knob_trim.svg"))); } };')
+        if custom_widgets.knob_default: structs.append('struct CustomDefaultKnob : rack::app::SvgKnob { CustomDefaultKnob() { minAngle = -0.83 * M_PI; maxAngle = 0.83 * M_PI; setSvg(rack::Svg::load(rack::asset::plugin(pluginInstance, "res/knob_default.svg"))); } };')
+        if custom_widgets.step_knob: structs.append('struct CustomStepKnob : rack::app::SvgKnob { CustomStepKnob() { minAngle = -0.83 * M_PI; maxAngle = 0.83 * M_PI; setSvg(rack::Svg::load(rack::asset::plugin(pluginInstance, "res/step_knob.svg"))); } };')
 
-    if custom_widgets.button: structs.append('struct CustomButton : rack::app::SvgSwitch { CustomButton() { momentary = true; addFrame(rack::Svg::load(rack::asset::plugin(pluginInstance, "res/button.svg"))); addFrame(rack::Svg::load(rack::asset::plugin(pluginInstance, "res/button_pressed.svg"))); } };')
-    if custom_widgets.trigger: structs.append('struct CustomTrigger : rack::app::SvgSwitch { CustomTrigger() { momentary = true; addFrame(rack::Svg::load(rack::asset::plugin(pluginInstance, "res/trigger.svg"))); addFrame(rack::Svg::load(rack::asset::plugin(pluginInstance, "res/trigger_pressed.svg"))); } };')
-    if custom_widgets.switch_on and custom_widgets.switch_off: structs.append('struct CustomSwitch : rack::app::SvgSwitch { CustomSwitch() { addFrame(rack::Svg::load(rack::asset::plugin(pluginInstance, "res/switch_off.svg"))); addFrame(rack::Svg::load(rack::asset::plugin(pluginInstance, "res/switch_on.svg"))); } };')
+        if custom_widgets.button: structs.append('struct CustomButton : rack::app::SvgSwitch { CustomButton() { momentary = true; addFrame(rack::Svg::load(rack::asset::plugin(pluginInstance, "res/button.svg"))); addFrame(rack::Svg::load(rack::asset::plugin(pluginInstance, "res/button_pressed.svg"))); } };')
+        if custom_widgets.trigger: structs.append('struct CustomTrigger : rack::app::SvgSwitch { CustomTrigger() { momentary = true; addFrame(rack::Svg::load(rack::asset::plugin(pluginInstance, "res/trigger.svg"))); addFrame(rack::Svg::load(rack::asset::plugin(pluginInstance, "res/trigger_pressed.svg"))); } };')
+        if custom_widgets.switch_on and custom_widgets.switch_off: structs.append('struct CustomSwitch : rack::app::SvgSwitch { CustomSwitch() { addFrame(rack::Svg::load(rack::asset::plugin(pluginInstance, "res/switch_off.svg"))); addFrame(rack::Svg::load(rack::asset::plugin(pluginInstance, "res/switch_on.svg"))); } };')
 
-    if custom_widgets.port_cv_in: structs.append('struct CustomCvInputPort : rack::app::SvgPort { CustomCvInputPort() { setSvg(rack::Svg::load(rack::asset::plugin(pluginInstance, "res/port_cv_in.svg"))); } };')
-    if custom_widgets.port_cv_out: structs.append('struct CustomCvOutputPort : rack::app::SvgPort { CustomCvOutputPort() { setSvg(rack::Svg::load(rack::asset::plugin(pluginInstance, "res/port_cv_out.svg"))); } };')
-    if custom_widgets.port_audio_in: structs.append('struct CustomAudioInputPort : rack::app::SvgPort { CustomAudioInputPort() { setSvg(rack::Svg::load(rack::asset::plugin(pluginInstance, "res/port_audio_in.svg"))); } };')
-    if custom_widgets.port_audio_out: structs.append('struct CustomAudioOutputPort : rack::app::SvgPort { CustomAudioOutputPort() { setSvg(rack::Svg::load(rack::asset::plugin(pluginInstance, "res/port_audio_out.svg"))); } };')
-    if custom_widgets.port_in: structs.append('struct CustomInputPort : rack::app::SvgPort { CustomInputPort() { setSvg(rack::Svg::load(rack::asset::plugin(pluginInstance, "res/port_in.svg"))); } };')
-    if custom_widgets.port_out: structs.append('struct CustomOutputPort : rack::app::SvgPort { CustomOutputPort() { setSvg(rack::Svg::load(rack::asset::plugin(pluginInstance, "res/port_out.svg"))); } };')
+        if custom_widgets.port_cv_in: structs.append('struct CustomCvInputPort : rack::app::SvgPort { CustomCvInputPort() { setSvg(rack::Svg::load(rack::asset::plugin(pluginInstance, "res/port_cv_in.svg"))); } };')
+        if custom_widgets.port_cv_out: structs.append('struct CustomCvOutputPort : rack::app::SvgPort { CustomCvOutputPort() { setSvg(rack::Svg::load(rack::asset::plugin(pluginInstance, "res/port_cv_out.svg"))); } };')
+        if custom_widgets.port_audio_in: structs.append('struct CustomAudioInputPort : rack::app::SvgPort { CustomAudioInputPort() { setSvg(rack::Svg::load(rack::asset::plugin(pluginInstance, "res/port_audio_in.svg"))); } };')
+        if custom_widgets.port_audio_out: structs.append('struct CustomAudioOutputPort : rack::app::SvgPort { CustomAudioOutputPort() { setSvg(rack::Svg::load(rack::asset::plugin(pluginInstance, "res/port_audio_out.svg"))); } };')
+        if custom_widgets.port_in: structs.append('struct CustomInputPort : rack::app::SvgPort { CustomInputPort() { setSvg(rack::Svg::load(rack::asset::plugin(pluginInstance, "res/port_in.svg"))); } };')
+        if custom_widgets.port_out: structs.append('struct CustomOutputPort : rack::app::SvgPort { CustomOutputPort() { setSvg(rack::Svg::load(rack::asset::plugin(pluginInstance, "res/port_out.svg"))); } };')
 
     if menu_entries:
         base_menu = '''
@@ -530,12 +531,14 @@ def gen_panel_svg(module_name: str, panel_hp: int,
 
 
 def generate_all(info: PatchInfo, panel_hp: int, components: List[ComponentPos],
-                 block_size: int, ui_text: str, polyphony: bool, rnbo_src_rel: str,
-                 rnbo_dir: Path, custom_widgets: Optional[CustomWidgets] = None,
+                 block_size: int, ui_text: str, polyphony: bool,
+                 rnbo_src_rel: str, rnbo_dir: Path,
+                 plugin_slug: str, plugin_name: str,
+                 custom_widgets: Optional[CustomWidgets] = None,
                  menu_entries: Optional[Dict[str, List[str]]] = None) -> Dict[str, str]:
     files = {}
     files["plugin.hpp"] = gen_plugin_hpp(info.name)
-    files["plugin.cpp"] = gen_plugin_cpp("slug", "name", info.name)
+    files["plugin.cpp"] = gen_plugin_cpp(plugin_slug, plugin_name, info.name)
     files[f"{info.name}.cpp"] = gen_module_cpp(info, panel_hp, components, block_size, ui_text, polyphony, custom_widgets, menu_entries)
     
     if not (custom_widgets and custom_widgets.panel):

@@ -16,6 +16,7 @@ class RnboParam:
     ui_type: str = ""       # "base" | "attenv" | "atten" | "" (plain)
     core_name: str = ""     # shared grouping name, e.g. "cutoff"
     adc_map: int = 0        # >0 means this param's column owns that adc~ input
+    out_map: int = 0        # >0 means this param's column owns that dac~ output
     step_size: float = 0.0  # >0 means this param snaps to intervals
 
     enum_label: str = ""    # overridden C++ enum label (stripped of prefix/suffix)
